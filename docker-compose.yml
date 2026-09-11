@@ -1,0 +1,67 @@
+# Local stack: `docker compose up --build`, then the API is at http://localhost:8000.
+
+x-app: &app
+  build: .
+  image: crm-api-app
+  init: true
+  volumes:
+    - .:/var/www/html
+    # Linux packages live in a named volume, so they never mix with a host install and load fast on Windows/macOS.
+    - vendor:/var/www/html/vendor
+  # Real environment variables take precedence over .env, so a local .env keeps working outside Docker.
+  environment:
+    DB_CONNECTION: mysql
+    DB_HOST: mysql
+    DB_PORT: 3306
+    DB_DATABASE: crm_api
+    DB_USERNAME: crm
+    DB_PASSWORD: secret
+
+services:
+  # Not published to the host, whose port 3306 may belong to a local MySQL.
+  # Inspect it with: docker compose exec mysql mysql -ucrm -psecret crm_api
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: crm_api
+      MYSQL_USER: crm
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # Over TCP: the temporary server MySQL runs while initialising listens only on its socket,
+      # so this passes once the real server is up and the crm user exists.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    <<: *app
+    entrypoint: ["sh", "docker/entrypoint.sh"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/up"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      # The first start installs Composer packages before migrating.
+      start_period: 5m
+
+  # Starts once the app is healthy, i.e. packages are installed and the jobs table exists.
+  queue:
+    <<: *app
+    command: ["php", "artisan", "queue:work"]
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  vendor:
