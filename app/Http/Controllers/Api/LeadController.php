@@ -6,12 +6,16 @@ use App\Enums\LeadSource;
 use App\Enums\LeadStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ListLeadsRequest;
+use App\Http\Requests\StoreLeadRequest;
+use App\Http\Requests\UpdateLeadRequest;
 use App\Http\Resources\LeadResource;
 use App\Models\Lead;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
+use Symfony\Component\HttpFoundation\Response;
 
 class LeadController extends Controller
 {
@@ -31,6 +35,13 @@ class LeadController extends Controller
         return LeadResource::collection($leads);
     }
 
+    public function store(StoreLeadRequest $request): JsonResponse
+    {
+        $lead = Lead::create($request->leadAttributes())->load('assignedRep');
+
+        return (new LeadResource($lead))->response()->setStatusCode(Response::HTTP_CREATED);
+    }
+
     public function show(Lead $lead): LeadResource
     {
         Gate::authorize('view', $lead);
@@ -41,5 +52,12 @@ class LeadController extends Controller
         ]);
 
         return new LeadResource($lead);
+    }
+
+    public function update(UpdateLeadRequest $request, Lead $lead): LeadResource
+    {
+        $lead->update($request->validated());
+
+        return new LeadResource($lead->load('assignedRep'));
     }
 }

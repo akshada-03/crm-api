@@ -69,6 +69,15 @@ class Lead extends Model
     }
 
     /**
+     * exists() rather than count(): the database can stop at the first matching row of the
+     * (lead_id, occurred_at) index instead of counting them all.
+     */
+    public function hasActivities(): bool
+    {
+        return $this->activities()->exists();
+    }
+
+    /**
      * Managers see every lead; anyone else sees only the leads assigned to them.
      *
      * @param  Builder<self>  $query
