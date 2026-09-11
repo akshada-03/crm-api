@@ -59,14 +59,12 @@ class DataModelTest extends TestCase
         $this->assertSame(ActivityType::Meeting, $activity->fresh()->type);
     }
 
-    public function test_role_helpers_follow_the_role_column(): void
+    public function test_is_manager_follows_the_role_column(): void
     {
         $manager = User::factory()->manager()->create();
         $rep = User::factory()->rep()->create();
 
         $this->assertTrue($manager->isManager());
-        $this->assertFalse($manager->isRep());
-        $this->assertTrue($rep->isRep());
         $this->assertFalse($rep->isManager());
     }
 

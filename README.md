@@ -78,15 +78,13 @@ The seeder also creates 36 leads split evenly across the reps (every status and 
 php artisan test
 ```
 
-The tests use SQLite in memory (set in `phpunit.xml`), so they need no MySQL. There is one feature test file per area: data model, auth, the policy matrix, each lead endpoint, assignment, activities, the report, the seeder and the queued job. They are built with factories and assert status codes, JSON and database state.
+The tests use SQLite in memory (set in `phpunit.xml`), so they need no MySQL. There is one feature test file per area: data model, auth, JSON error handling, the policy matrix, each lead endpoint, assignment, activities, the report, the seeder and the queued job. They are built with factories and assert status codes, JSON and database state.
 
-In Docker:
+In Docker (still on SQLite, so the seeded MySQL data is untouched):
 
 ```bash
-docker compose exec -e DB_CONNECTION=sqlite -e DB_DATABASE=:memory: app php artisan test
+docker compose exec app php artisan test
 ```
-
-Keep the `-e` flags. The container sets `DB_CONNECTION=mysql` as a real environment variable, and `phpunit.xml` doesn't override existing variables, so without them `RefreshDatabase` would wipe the seeded Docker database.
 
 ## API reference
 
@@ -493,7 +491,11 @@ Known limitation: SQLite, which the tests use, has no real DECIMAL type, so its 
 
 ## Trade-off
 
-The report is computed from the base tables on every request instead of from stored counters. Counters (per-rep totals updated whenever a lead or activity changes) would make the read trivial, but every write path would have to keep them in step, and one missed path leaves the report silently wrong. Aggregating live over covering indexes keeps the report correct without any extra write logic. The cost is that each request reads the index entries for the reps in view: 9 ms for a rep, and about 0.7 s for a manager at 100,000 leads and 300,000 activities. If that grows, caching the result (below) is a smaller change than counters.
+**I compute the report live instead of keeping per-rep counters.**
+
+The alternative was to store each rep's totals and update them on every write: a lead created, reassigned, or changing status or value, and every activity logged. Reading the report would then be almost free. But each of those write paths would have to adjust the counters correctly (reassignment moves totals between two reps), and one missed path would leave the report silently wrong, with no error to notice.
+
+Computing the report live means the numbers always come straight from the leads and activities, and there is no extra write logic to get wrong. The price is read time. With 100,000 leads and 300,000 activities, a rep's report takes 9 ms and a manager's about 0.7 s, and the manager's grows with the data. For a report that is read occasionally rather than on every page load, I think that is the right cost to pay. If it stops being acceptable, I would cache the result and clear it on writes (see below) before reaching for counters.
 
 ## What I'd do with more time
 

@@ -82,11 +82,6 @@ class User extends Authenticatable
         return $this->role === UserRole::Manager;
     }
 
-    public function isRep(): bool
-    {
-        return $this->role === UserRole::Rep;
-    }
-
     /**
      * Who appears in the rep performance report: managers see every rep, anyone else only themselves.
      *

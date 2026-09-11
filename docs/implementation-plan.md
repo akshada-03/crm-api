@@ -72,7 +72,7 @@ Indexes on `leads`:
 | `created_at` | Default sort |
 | `expected_value` | Sort by value |
 
-The single-column `status` and `source` indexes are low-cardinality (5 values each). Keep or drop them based on the real EXPLAIN output in Step 8/9.
+The single-column `status` and `source` indexes are low-cardinality (5 values each). Kept: EXPLAIN on 100k leads shows the paginator's `COUNT(*)` for a status or source filter reads only these indexes.
 
 ### `activities`
 
@@ -269,25 +269,21 @@ Output per rep:
 
 Multi-tenancy is only a short sketch in the README under "What I'd do with more time". Report caching and the event listener are also listed there and not built.
 
-## 1.15 Phases, time and commits
+## 1.15 Phases and commits
 
-To do in Step 13: trim this section down to the commit list (drop the estimates and the schedule).
-
-| Step | Work | Est. | Commit message |
-|---|---|---|---|
-| 0 | Laravel + Sanctum setup, GitHub repo | 20 min | `chore: bootstrap Laravel 12 with Sanctum` |
-| 1 | Plan doc + CLAUDE.md | 15 min | `docs: add implementation plan` |
-| 2 | Enums, migrations, models, factories | 45 min | `feat: add enums, migrations, models and factories` |
-| 3 | Login + JSON errors | 30 min | `feat(auth): add Sanctum token login and JSON error handling` |
-| 4 | Policy + visibility scope | 20 min | `feat(authz): add lead policy and visibility scope` |
-| 5 | List + show | 60 min | `feat(leads): list with filters, search, sort, pagination; show lead` |
-| 6 | Create + update + won/lost | 45 min | `feat(leads): create and update leads, enforce won/lost rule` |
-| 7 | Assign + activities | 45 min | `feat(leads): assign leads to reps and log activities` |
-| 8 | Report | 60 min | `feat(reports): add single-query rep performance report` |
-| 9 | Seeder | 20 min | `feat(db): seed manager, reps, leads and activities` |
-| 10 | Bonus: queued job | 30 min | `feat(queue): notify rep via queued job on assignment` |
-| 11 | Bonus: Docker | 60 min | `build: add one-command Docker setup` |
-| 12 | README | 40 min | `docs: write README` |
-| 13 | Final review | 30 min | `chore: final review cleanup` |
-
-**Friday:** steps 0–6. **Saturday morning:** steps 7–10. **Saturday midday:** steps 11–13 (skip 11 if you're behind). **Saturday afternoon:** submit, aiming for about 5 pm.
+| Step | Work | Commit message |
+|---|---|---|
+| 0 | Laravel + Sanctum setup, GitHub repo | `chore: bootstrap Laravel 12 with Sanctum` |
+| 1 | Plan doc + CLAUDE.md | `docs: add implementation plan` |
+| 2 | Enums, migrations, models, factories | `feat: add enums, migrations, models and factories` |
+| 3 | Login + JSON errors | `feat(auth): add Sanctum token login and JSON error handling` |
+| 4 | Policy + visibility scope | `feat(authz): add lead policy and visibility scope` |
+| 5 | List + show | `feat(leads): list with filters, search, sort, pagination; show lead` |
+| 6 | Create + update + won/lost | `feat(leads): create and update leads, enforce won/lost rule` |
+| 7 | Assign + activities | `feat(leads): assign leads to reps and log activities` |
+| 8 | Report | `feat(reports): add single-query rep performance report` |
+| 9 | Seeder | `feat(db): seed manager, reps, leads and activities` |
+| 10 | Bonus: queued job | `feat(queue): notify rep via queued job on assignment` |
+| 11 | Bonus: Docker | `build: add one-command Docker setup` |
+| 12 | README | `docs: write README` |
+| 13 | Final review | `chore: final review cleanup` |
