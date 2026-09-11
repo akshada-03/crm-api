@@ -82,4 +82,47 @@ class Lead extends Model
 
         $query->whereBelongsTo($viewer, 'assignedRep');
     }
+
+    /**
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function unassigned(Builder $query): void
+    {
+        $query->whereNull($query->qualifyColumn('assigned_to'));
+    }
+
+    /**
+     * Case-insensitive substring match on name, email or company. The ORs sit in their own
+     * group so they can't widen other constraints such as visibleTo(), and LIKE wildcards
+     * in the term are escaped so "%" and "_" match literally.
+     *
+     * "!" is the escape character because it works unchanged on MySQL and SQLite: MySQL reads
+     * '\' as an unterminated string literal, and SQLite rejects '\\' as more than one character.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function search(Builder $query, string $term): void
+    {
+        $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term).'%';
+
+        $query->where(function (Builder $query) use ($pattern) {
+            foreach (['name', 'email', 'company'] as $column) {
+                $query->orWhereRaw($query->qualifyColumn($column)." like ? escape '!'", [$pattern]);
+            }
+        });
+    }
+
+    /**
+     * Order by the given column, then by id so rows with equal values keep a stable order across pages.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function sortedBy(Builder $query, string $column, string $direction): void
+    {
+        $query->orderBy($query->qualifyColumn($column), $direction)
+            ->orderBy($query->qualifyColumn('id'), $direction);
+    }
 }
