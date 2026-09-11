@@ -14,6 +14,7 @@ A Laravel 12 JSON API for a small CRM. Users are managers or reps. Reps work Lea
 | Tests | PHPUnit feature tests + factories | Laravel default |
 | Queue | `database` driver | No extra infrastructure |
 | Formatting | Laravel Pint | Consistent style |
+| Eloquent strict mode | `Model::shouldBeStrict()` outside production | Lazy loading (N+1) and silently discarded attributes throw in dev and tests |
 
 ## 1.3 Folder layout
 
@@ -71,16 +72,18 @@ Indexes on `leads`:
 | `created_at` | Default sort |
 | `expected_value` | Sort by value |
 
+The single-column `status` and `source` indexes are low-cardinality (5 values each). Keep or drop them based on the real EXPLAIN output in Step 8/9.
+
 ### `activities`
 
 | Column | Type | Notes |
 |---|---|---|
 | id | bigint PK | |
 | lead_id | FK → leads, `cascadeOnDelete` | a lead's activities go with it |
-| user_id | FK → users | who logged it |
+| user_id | FK → users, `restrictOnDelete` | who logged it; history is kept, so users are deactivated rather than deleted |
 | type | string(20) | `ActivityType` enum |
 | body | text | |
-| occurred_at | timestamp | |
+| occurred_at | datetime | not `timestamp`: MariaDB/older MySQL add `ON UPDATE CURRENT_TIMESTAMP` to the first NOT NULL timestamp column, which would rewrite it on every update |
 | timestamps | | |
 
 Indexes on `activities`:
@@ -119,6 +122,9 @@ All role logic lives in `LeadPolicy` and the `visibleTo()` query scopes. Control
 | logActivity | ✅ | ✅ | 403 |
 | report | all reps | own row only | — |
 
+- Denials carry a clear message: "This lead is not assigned to you." (view / update / logActivity) and "Only managers can assign leads." (assign).
+- A rep gets 403, not 404, for another rep's lead. This is a deliberate assumption (it reveals the lead exists) and is documented in the README.
+
 - `Lead::visibleTo(User $viewer)`: managers get everything; reps get `where assigned_to = viewer.id`.
 - `User::visibleTo(User $viewer)` (for the report): managers see all reps; a rep sees only themselves.
 
@@ -141,11 +147,11 @@ Every route except login sits inside `auth:sanctum`.
 
 | Request | Rules |
 |---|---|
-| LoginRequest | email: required, email. password: required, string |
-| ListLeadsRequest | status: enum. source: enum. assigned_to: integer, exists users. search: string, max 100. sort: in created_at, expected_value (default created_at). direction: in asc, desc (default desc). per_page: integer 1–100 (default 15) |
+| LoginRequest | email: required, email. password: required, string. Rate limited by a named limiter keyed on email + IP |
+| ListLeadsRequest | status: enum. source: enum. assigned_to: a user id (exists users) or the literal `unassigned`. search: string, max 100; `%` and `_` are escaped before the LIKE. sort: in created_at, expected_value (default created_at). direction: in asc, desc (default desc). per_page: integer 1–100 (default 15) |
 | StoreLeadRequest | name: required, max 255. email: required, email. phone: required, max 30. company: nullable, max 255. source: required, enum. status: optional, enum, **not won/lost**. expected_value: required, numeric, 0–9999999999.99, max 2 decimals. assigned_to: **managers only**, must be a user with role rep |
-| UpdateLeadRequest | Same fields as `sometimes`. No assigned_to (assignment has its own endpoint). **Won/lost rule** in `after()` |
-| AssignLeadRequest | rep_id: required, integer, exists users where role = rep |
+| UpdateLeadRequest | Same fields as `sometimes`. No assigned_to (assignment has its own endpoint). **Won/lost rule** in `after()`, skipped when `status` already failed its own rules |
+| AssignLeadRequest | assigned_to: required, integer, exists users where role = rep (same field name as the filter and create) |
 | StoreActivityRequest | type: required, enum. body: required, string, max 5000. occurred_at: nullable, date, not in the future (defaults to now) |
 
 ## 1.10 JSON shape
@@ -170,7 +176,7 @@ Every route except login sits inside `auth:sanctum`.
 { "message": "Unauthenticated." }
 
 // 403
-{ "message": "This action is unauthorized." }
+{ "message": "This lead is not assigned to you." }
 
 // 404
 { "message": "Resource not found." }
@@ -224,6 +230,7 @@ ORDER BY u.name;
 - Status values are bound from the enum (no string concatenation).
 - `(assigned_to, status, expected_value)` covers the leads subquery; `activities.user_id` serves the activity count.
 - The query count is constant: 1 query whether there are 3 reps or 300.
+- Money totals are formatted with `number_format($value, 2, '.', '')`. Known limitation: SQLite (tests) has no real DECIMAL, so its sums are floats; MySQL correctness is checked in Step 8 and the limitation is noted in the README.
 
 Output per rep:
 
@@ -242,10 +249,10 @@ Output per rep:
 
 | Test file | What it proves |
 |---|---|
-| DataModelTest | relationships, enum casts, exact decimals |
-| AuthTest | login success / wrong password / unknown email / missing fields / throttling |
+| DataModelTest | relationships, enum casts, exact decimals, delete behaviour of each FK |
+| AuthTest | login success / wrong password / unknown email / missing fields / throttling per email + IP |
 | LeadPolicyTest | the full authorization matrix |
-| LeadIndexTest | rep scoping, each filter, search on 3 fields, both sorts, pagination, 422 on bad params, no N+1, 401 |
+| LeadIndexTest | rep scoping, each filter (incl. `assigned_to=unassigned`), search on 3 fields, LIKE wildcards escaped, both sorts, pagination, 422 on bad params, no N+1, 401 |
 | LeadShowTest | 200 with activities and rep, 403, 404 |
 | LeadStoreTest | create rules, rep auto-assign, won/lost blocked on create, managers-only assigned_to |
 | LeadUpdateTest | field updates, 403, won/lost rule (422 + DB unchanged), allowed with an activity |
@@ -263,6 +270,8 @@ Output per rep:
 Multi-tenancy is only a short sketch in the README under "What I'd do with more time". Report caching and the event listener are also listed there and not built.
 
 ## 1.15 Phases, time and commits
+
+To do in Step 13: trim this section down to the commit list (drop the estimates and the schedule).
 
 | Step | Work | Est. | Commit message |
 |---|---|---|---|

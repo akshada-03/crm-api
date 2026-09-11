@@ -19,7 +19,7 @@ All routes except login are behind `auth:sanctum`.
 | Method | URI | Purpose |
 |---|---|---|
 | POST | /api/login | Issue a token |
-| GET | /api/leads | Filter (status, source, assigned_to), search (name/email/company), sort (created_at, expected_value), paginate |
+| GET | /api/leads | Filter (status, source, assigned_to incl. `unassigned`), search (name/email/company), sort (created_at, expected_value), paginate |
 | POST | /api/leads | Create a lead |
 | GET | /api/leads/{lead} | Show with activities and assigned rep |
 | PATCH | /api/leads/{lead} | Update fields and status (won/lost rule) |
@@ -31,6 +31,8 @@ All routes except login are behind `auth:sanctum`.
 
 - Windows. Dev DB: MySQL 8.0 (`crm_api`). Tests: SQLite in-memory (phpunit.xml), so any raw SQL must run on both.
 - Run tests with `php artisan test`. Format with `vendor/bin/pint` (in PowerShell: `php vendor/bin/pint`).
+- `Model::shouldBeStrict()` is on outside production, so lazy loading throws: always eager load.
+- No new Composer dependencies without asking.
 
 ## Ground rules
 
