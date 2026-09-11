@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Enums\LeadSource;
 use App\Enums\LeadStatus;
 use Database\Factories\LeadFactory;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -64,5 +66,20 @@ class Lead extends Model
     public function activities(): HasMany
     {
         return $this->hasMany(Activity::class);
+    }
+
+    /**
+     * Managers see every lead; anyone else sees only the leads assigned to them.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function visibleTo(Builder $query, User $viewer): void
+    {
+        if ($viewer->isManager()) {
+            return;
+        }
+
+        $query->whereBelongsTo($viewer, 'assignedRep');
     }
 }

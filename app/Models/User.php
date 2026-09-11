@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -83,5 +85,22 @@ class User extends Authenticatable
     public function isRep(): bool
     {
         return $this->role === UserRole::Rep;
+    }
+
+    /**
+     * Who appears in the rep performance report: managers see every rep, anyone else only themselves.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function visibleTo(Builder $query, User $viewer): void
+    {
+        if ($viewer->isManager()) {
+            $query->where($query->qualifyColumn('role'), UserRole::Rep);
+
+            return;
+        }
+
+        $query->whereKey($viewer->getKey());
     }
 }
