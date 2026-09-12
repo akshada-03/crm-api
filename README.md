@@ -6,6 +6,7 @@ Laravel 12 · PHP 8.2 · MySQL 8.0 · Sanctum tokens · database queue
 
 ## Contents
 
+- [Quick start](#quick-start)
 - [Setup](#setup)
 - [Running tests](#running-tests)
 - [API reference](#api-reference)
@@ -14,6 +15,26 @@ Laravel 12 · PHP 8.2 · MySQL 8.0 · Sanctum tokens · database queue
 - [Trade-off](#trade-off)
 - [What I'd do with more time](#what-id-do-with-more-time)
 - [Bonus features](#bonus-features)
+
+## Quick start
+
+Requires Git and Docker Desktop (Compose v2).
+
+```bash
+git clone https://github.com/akshada-03/crm-api.git
+cd crm-api
+docker compose up --build
+```
+
+When `http://localhost:8000/up` shows "Application up", log in (on Windows, run this in Git Bash):
+
+```bash
+curl -X POST http://localhost:8000/api/login -H "Accept: application/json" -H "Content-Type: application/json" -d '{"email":"manager@example.com","password":"password"}'
+```
+
+The response contains a token; send it as `Authorization: Bearer <token>` on every other request. The [seeded accounts](#seeded-accounts) and the [API reference](#api-reference) list what to try next.
+
+Stop with `Ctrl+C`, or `docker compose down`. `docker compose down -v` also deletes the data.
 
 ## Setup
 
@@ -41,7 +62,7 @@ On the first start the `app` container installs packages, migrates, seeds and pr
 | `app` | Installs packages, creates `.env` from `.env.example` if it's missing, generates `APP_KEY`, migrates, seeds on the first run, then serves on port 8000. |
 | `queue` | Runs `php artisan queue:work` for the assignment notification job. |
 
-To start again from an empty database, run `docker compose down -v`, then `docker compose up --build`.
+Stop the stack with `Ctrl+C`, or with `docker compose down` if you started it with `-d`; the data is kept. To start again from an empty database, run `docker compose down -v`, then `docker compose up --build`.
 
 ### Local
 
@@ -67,7 +88,7 @@ In a second terminal, start the queue worker. The assignment notification is que
 php artisan queue:work
 ```
 
-The API is at `http://localhost:8000`. `php artisan migrate:fresh --seed` resets the data.
+The API is at `http://localhost:8000`. Stop the server and the worker with `Ctrl+C` in each terminal. `php artisan migrate:fresh --seed` resets the data.
 
 ### Seeded accounts
 
@@ -86,7 +107,7 @@ The seeder also creates 36 leads split evenly across the reps (every status and 
 php artisan test
 ```
 
-The tests use SQLite in memory (set in `phpunit.xml`), so they need no MySQL. There is one feature test file per area: data model, auth, JSON error handling, the policy matrix, each lead endpoint, assignment, activities, the report, the seeder and the queued job. They are built with factories and assert status codes, JSON and database state.
+There are 191 feature tests. They use SQLite in memory (set in `phpunit.xml`), so they need no MySQL. There is one test file per area: data model, auth, JSON error handling, the policy matrix, each lead endpoint, assignment, activities, the report, the seeder and the queued job. They are built with factories and assert status codes, JSON and database state.
 
 In Docker (still on SQLite, so the seeded MySQL data is untouched):
 
@@ -106,13 +127,13 @@ These screenshots are from a real run against the freshly seeded Docker stack. E
 
 ![POST /api/login returns a token and the user](docs/screenshots/04-api-login.png)
 
-**2. List leads** with a filter, a sort and pagination.
+**2. List leads** with pagination, sorting and filtering.
 
-![GET /api/leads filtered to won leads, sorted by expected value](docs/screenshots/05-api-list-leads.png)
+![GET /api/leads returning paginated leads](docs/screenshots/05-api-list-leads.png)
 
-**3. Visibility.** A rep sees only their own leads, and gets a 403 on anyone else's.
+**3. Rep authentication & visibility.** A rep authenticates to receive a rep-scoped token. Query results are strictly scoped to their assigned leads (`WHERE assigned_to = ?`), and attempting to view or act on another rep's lead returns `403 Forbidden`.
 
-![A rep's list is limited to their own leads; another rep's lead returns 403](docs/screenshots/06-api-rep-visibility.png)
+![POST /api/login as Rep 1 to issue a rep-scoped token](docs/screenshots/06-api-rep-visibility.png)
 
 **4. The won/lost rule.** A lead can be marked won only after an activity is logged.
 
@@ -546,7 +567,9 @@ Computing the report live means the numbers always come straight from the leads 
 - **Soft deletes** on leads and activities, and deactivating users instead of deleting them.
 - **Multi-tenancy**, sketched:
   - add `tenant_id` to `users`, `leads` and `activities`;
-  - a global scope filters every query on the authenticated user's tenant and fills in `tenant_id` on create;
+  - a global scope filters every query on the current tenant and fills in `tenant_id` on create. It reads the tenant from a tenant context rather than straight from `auth()`, and middleware sets that context from the logged-in user;
+  - queued jobs have no logged-in user, so the tenant id is added to every job payload (`Queue::createPayloadUsing`) and restored in a `JobProcessing` listener, before the job's models are loaded;
+  - cache keys include the tenant, e.g. `report:{tenant}:{viewer}` if the report is cached, so one tenant never reads another's numbers;
   - policies also check `$user->tenant_id === $lead->tenant_id`, and `exists` rules (such as "`assigned_to` must be a rep") are limited to the tenant;
   - composite indexes are prefixed with `tenant_id`, e.g. `(tenant_id, assigned_to, status, expected_value)`;
   - the report adds `tenant_id` to both subqueries and to the users filter, so it groups reps within one tenant.
@@ -556,4 +579,10 @@ Computing the report live means the numbers always come straight from the leads 
 1. **Queued job on assignment** (`NotifyRepOfLeadAssignment`). It is dispatched only when the assignee changes, and only after the transaction commits. It has 3 tries with backoff and a `failed()` handler, and it is dropped if the lead or rep has been deleted before it runs. `Queue::fake()` makes it quick to test.
 2. **One-command Docker setup.** A reviewer can run the API, MySQL and the queue worker with `docker compose up --build`, without installing PHP or MySQL.
 
-I chose these two because each is small and builds on the core instead of adding new domain features. Together they cover background processing and a reproducible setup. Multi-tenancy, report caching and the event listener stay in the list above.
+I chose these two because each is small and builds on the core instead of adding new domain features. Together they cover background processing and a reproducible setup.
+
+Why not the others:
+
+- **Report caching.** The report is fast enough to compute live (9 ms for a rep, about 0.7 s for a manager at 100,000 leads, measured above). A cache would add invalidation paths that can go wrong, without a measured need. It is the next step if the report gets slow; see the [trade-off](#trade-off).
+- **An event + listener that records an activity on status change.** An automatic activity would count toward the won/lost rule: moving a lead to `contacted` would by itself allow marking it won. It would also inflate each rep's `activity_count`. I'd record status history in its own table instead (see the list above).
+- **Multi-tenancy.** Sketched above rather than built, as the brief allows.
