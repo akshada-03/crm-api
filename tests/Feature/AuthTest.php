@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
@@ -76,6 +77,24 @@ class AuthTest extends TestCase
             ]);
 
         $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    /**
+     * Without the hash on the unknown-email path, that failure would return measurably faster
+     * than a wrong password, and response times would reveal which emails have an account.
+     */
+    public function test_an_unknown_email_costs_one_password_hash_just_like_a_wrong_password(): void
+    {
+        User::factory()->create(['email' => 'rep@example.com', 'password' => 'secret-password']);
+        Hash::spy();
+
+        $this->postJson('/api/login', ['email' => 'rep@example.com', 'password' => 'wrong-password'])
+            ->assertUnprocessable();
+        $this->postJson('/api/login', ['email' => 'nobody@example.com', 'password' => 'wrong-password'])
+            ->assertUnprocessable();
+
+        Hash::shouldHaveReceived('check')->once();
+        Hash::shouldHaveReceived('make')->once()->with('wrong-password');
     }
 
     public function test_missing_fields_return_json_validation_errors_even_without_an_accept_header(): void

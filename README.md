@@ -135,7 +135,7 @@ Auth: none. Limited to 5 attempts per minute per email + IP address, then `429`.
 }
 ```
 
-An unknown email and a wrong password both return `422` with `"The provided credentials are incorrect."`, so the response doesn't reveal which emails exist.
+An unknown email and a wrong password both return `422` with `"The provided credentials are incorrect."`. Both also cost one password hash, so neither the response nor its timing reveals which emails exist.
 
 ### GET /api/leads
 
@@ -355,7 +355,7 @@ Several invalid fields at once (`message` is the first error plus a count):
 }
 ```
 
-With `APP_DEBUG=true` (the `.env.example` default), 403 and 500 responses also include `exception`, `file`, `line` and `trace` keys.
+`.env.example` sets `APP_DEBUG=false`, so these bodies are all a client sees. With `APP_DEBUG=true`, 403 and 500 responses also include `exception`, `file`, `line` and `trace` keys. Server errors are logged in full to `storage/logs/laravel.log` either way.
 
 ## Design notes
 
@@ -486,7 +486,7 @@ Known limitation: SQLite, which the tests use, has no real DECIMAL type, so its 
 - **Search is `LIKE '%term%'`** on name, email and company. It is case-insensitive, and `%` and `_` in the term are escaped. A leading wildcard can't use an index, so search scans the leads the user can see.
 - **Assignment has its own endpoint.** `PATCH` rejects `assigned_to`, so every assignment goes through the manager-only check and the notification job.
 - **Unassigned leads are visible to managers only** and are left out of the report.
-- **Login gives the same message for an unknown email and a wrong password**, and is throttled per email + IP.
+- **Login answers an unknown email and a wrong password the same way**: the same message, and the same one password hash so the timing matches too. It is throttled per email + IP.
 - **Timestamps are ISO 8601 in UTC.**
 
 ## Trade-off
