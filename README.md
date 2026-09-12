@@ -27,6 +27,14 @@ docker compose up --build
 
 The API is at `http://localhost:8000` once the `app` container is healthy. The first start installs Composer packages, so it takes a few minutes.
 
+On the first start the `app` container installs packages, migrates, seeds and prints the login accounts (output trimmed to that container):
+
+![First start of docker compose up: migrations, seeding and the server starting](docs/screenshots/01-docker-up.png)
+
+`http://localhost:8000/up` then shows the health check:
+
+<img src="docs/screenshots/02-health-check.png" alt="The /up health check page showing Application up" width="620">
+
 | Service | Role |
 |---|---|
 | `mysql` | MySQL 8.0 with the `crm_api` database. Not published to the host, so it doesn't clash with a local MySQL. |
@@ -85,6 +93,38 @@ In Docker (still on SQLite, so the seeded MySQL data is untouched):
 ```bash
 docker compose exec app php artisan test
 ```
+
+`--compact` prints a one-screen summary:
+
+<img src="docs/screenshots/03-tests.png" alt="php artisan test --compact: 191 passed" width="660">
+
+### Trying the API by hand
+
+These screenshots are from a real run against the freshly seeded Docker stack. Each shows the request, who sent it and the response. `…` marks parts of a response left out for space; the full shapes are in the [API reference](#api-reference).
+
+**1. Log in.** Every other request sends the token as `Authorization: Bearer <token>`.
+
+![POST /api/login returns a token and the user](docs/screenshots/04-api-login.png)
+
+**2. List leads** with a filter, a sort and pagination.
+
+![GET /api/leads filtered to won leads, sorted by expected value](docs/screenshots/05-api-list-leads.png)
+
+**3. Visibility.** A rep sees only their own leads, and gets a 403 on anyone else's.
+
+![A rep's list is limited to their own leads; another rep's lead returns 403](docs/screenshots/06-api-rep-visibility.png)
+
+**4. The won/lost rule.** A lead can be marked won only after an activity is logged.
+
+![Marking a lead won fails with 422 until an activity is logged, then succeeds](docs/screenshots/07-api-won-lost-rule.png)
+
+**5. The rep performance report.** The manager sees every rep; a rep sees only their own row.
+
+![GET /api/reports/rep-performance as the manager and as a rep](docs/screenshots/08-api-rep-performance.png)
+
+**6. Assignment queues a job.** The queue worker runs `NotifyRepOfLeadAssignment`, which logs the notification.
+
+![Assigning a lead returns 200 and the queue worker runs the notification job](docs/screenshots/09-queue-job.png)
 
 ## API reference
 
